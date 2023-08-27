@@ -27,7 +27,7 @@ observe --run
     "executable": "./test2",
     "args": ["<", "input.txt"],
 
-    //Add the folders to observe
-    "folders": ["./Public","./Views"]
+    
+    "folders": ["./Public","./Views", "/MoreFolders"]
 }
 ```
