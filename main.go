@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"encoding/json"
 	"flag"
 	"io/fs"
@@ -60,8 +61,8 @@ func main() {
 			log.Fatalln(err.Error())
 		}
 
-		if len(config.BuildSystem) == 0 || len(config.Executable) == 0 {
-			log.Fatalln("No build or run command")
+		if len(config.Executable) == 0 {
+			log.Fatalln("No run command")
 		}
 		initialised = true
 	}
@@ -87,8 +88,7 @@ func main() {
 		}
 
 		log.Println("Observing...")
-		ExecuteCommand(&config)
-		go EnQueue(watcher, 100, pipe)
+		go EnQueue(watcher, 300, pipe)
 		go ProcessQueue(pipe, &config)
 		<-make(chan struct{})
 	}
@@ -106,7 +106,7 @@ func EnQueue(watcher *fsnotify.Watcher, delay int, pipe chan fsnotify.Event) {
 	for {
 		select {
 		case lastEvent = <-watcher.Events:
-			if timeout {
+			if timeout && lastEvent.Has(fsnotify.Write) {
 				pipe <- lastEvent
 				timeout = false
 			}
@@ -119,42 +119,72 @@ func EnQueue(watcher *fsnotify.Watcher, delay int, pipe chan fsnotify.Event) {
 	}
 }
 
+func ConnectIO(cmd *exec.Cmd, in, out, err *os.File) {
+	cmd.Stdin = in
+	cmd.Stdout = out
+	cmd.Stderr = err
+}
+
 // This function fires when there is an event in the local queue
 func ProcessQueue(pipe chan fsnotify.Event, config *ServerConfig) {
 	var event fsnotify.Event
+	command_buffer := list.New()
+	command_buffer.Init()
+	PushCommand(config, command_buffer)
+	PushCommand(config, command_buffer)
+	ExecuteCommand(command_buffer)
 	for {
-		if event.Has(fsnotify.Write) {
-			log.Println("Restarting...")
-			ExecuteCommand(config)
-		}
 		event = <-pipe
+		log.Println(event)
+
+		iter := command_buffer.Front()
+		command_buffer.Remove(iter)
+		iter = command_buffer.Front()
+
+		cmd := iter.Value.(*exec.Cmd)
+		err := cmd.Process.Kill()
+		if err != nil {
+			log.Fatalln("Kill Error: ", err.Error(), cmd)
+		}
+		// log.Println("Killed: ", cmd, cmd.Process)
+		err = cmd.Wait()
+		if err != nil {
+			log.Println("Wait error: ", err.Error())
+		}
+		// log.Println("Released: ", cmd, cmd.Process)
+		command_buffer.Remove(iter)
+		// log.Println("Removed: ", )
+		log.Println("Restarting...")
+		ExecuteCommand(command_buffer)
+		// log.Println("Executed")
+		PushCommand(config, command_buffer)
 	}
 }
 
-func ExecuteCommand(config *ServerConfig) {
+func PushCommand(config *ServerConfig, command_buffer *list.List) {
 
 	build_command := exec.Command(config.BuildSystem, config.BuildArgs...)
-	build_command.Stdin = os.Stdin
-	build_command.Stdout = os.Stdout
-	build_command.Stderr = os.Stderr
-
-	commands := []*exec.Cmd{build_command}
-
+	ConnectIO(build_command, os.Stdin, os.Stdout, os.Stderr)
 	run_command := exec.Command(config.Executable, config.Args...)
-	run_command.Stdin = os.Stdin
-	run_command.Stdout = os.Stdout
-	run_command.Stderr = os.Stderr
+	ConnectIO(run_command, os.Stdin, os.Stdout, os.Stderr)
 
-	commands = append(commands, run_command)
+	command_buffer.PushBack(build_command)
+	command_buffer.PushBack(run_command)
+}
 
-	for _, v := range commands {
-		err := v.Start()
+func ExecuteCommand(command_buffer *list.List) {
+	var iter *list.Element
+	iter = command_buffer.Front()
+	for i := 0; i < 2; i++ {
+		cmd := iter.Value.(*exec.Cmd)
+		err := cmd.Start()
 		if err != nil {
-			log.Fatalln("StartError: ", err.Error())
+			log.Fatalln(cmd, "StartError: ", err.Error())
 		}
-		v.Wait()
-		if err != nil {
-			log.Fatalln("WaitError: ", err.Error())
+		// log.Println("Execution Started: ", cmd, cmd.Process)
+		if i == 0 {
+			cmd.Wait()
 		}
+		iter = iter.Next()
 	}
 }

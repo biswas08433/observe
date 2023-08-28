@@ -17,6 +17,21 @@ observe --run
 ```
 
 ## Example `obsconfig.json`
+
+Let's say you want to run build and run using two commands:
+```console
+$ go build .
+$ ./test2 < input.txt
+```
+
+Then the buildSystem is `"go"` and the arguments are 
+`"build"` and `"."`
+
+Similarly the executable is `"./test2"` and the arguments are `"<"` and `"input.txt"`
+
+If you want to add other folders inside your working folder for observation, add the path to the `"folders"`
+list.
+
 ```json
 {
     "buildSystem": "go",
@@ -25,9 +40,7 @@ observe --run
         "."
     ],
     "executable": "./test2",
-    "args": ["<", "input.txt"],
-
-    
+    "args": ["<", "input.txt"],    
     "folders": ["./Public","./Views", "/MoreFolders"]
 }
 ```
