@@ -1,6 +1,14 @@
 # Observe
 Concurrent monitoring Program for executables.
 
+## Prerequisite
+Install golang on your system.
+Link: [https://go.dev/doc/install](https://go.dev/doc/install)
+
+## Install
+```
+go install github.com/biswas08433/observe
+```
 
 ## Usage
 
